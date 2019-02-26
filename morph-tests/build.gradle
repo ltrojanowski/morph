@@ -1,12 +1,18 @@
+apply plugin: 'kotlin'
 apply plugin: 'kotlin-kapt'
+
+kapt {
+    correctErrorTypes = true
+}
 
 dependencies {
     implementation project(':morph-api')
     kapt project(':morph-compiler')
     implementation project(':morph-compiler')
-//    compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
     implementation libraries.kotlin
     testImplementation libraries.kotlin_junit
     testImplementation libraries.junit
+    testImplementation libraries.kotlin_test
+    testImplementation libraries.compile_testing
     testRuntimeOnly libraries.junitEngine
 }

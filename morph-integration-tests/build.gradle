@@ -1,0 +1,37 @@
+apply plugin: 'org.jetbrains.kotlin.jvm'
+apply plugin: 'org.jetbrains.kotlin.kapt'
+apply plugin: 'idea'
+
+idea {
+    module {
+        sourceDirs += files(
+                'build/generated/source/kapt/main',
+                'build/generated/source/kaptKotlin/main',
+                'build/tmp/kapt/main/kotlinGenerated')
+        generatedSourceDirs += files(
+                'build/generated/source/kapt/main',
+                'build/generated/source/kaptKotlin/main',
+                'build/tmp/kapt/main/kotlinGenerated')
+    }
+}
+
+
+//version 'unspecified'
+//
+//sourceCompatibility = 1.8
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':morph-api')
+    kapt project(':morph-compiler')
+    implementation libraries.kotlin
+    testImplementation libraries.kotlin_junit
+    testImplementation libraries.junit
+    testImplementation libraries.kotlin_test
+    testImplementation libraries.compile_testing
+    testRuntimeOnly libraries.junitEngine
+//    testCompile group: 'junit', name: 'junit', version: '4.12'
+}

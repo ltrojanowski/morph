@@ -3,3 +3,5 @@ rootProject.name = 'morph'
 include 'morph-api'
 include 'morph-compiler'
 include 'morph-tests'
+include 'morph-integration-tests'
+

@@ -1,12 +1,10 @@
 package morph.compiler
 
 
-import arrow.core.orNull
 import com.google.auto.service.AutoService
 import com.squareup.kotlinpoet.*
 import me.eugeniomarletti.kotlin.metadata.shadow.metadata.ProtoBuf.Visibility
-import morph.api.Morph
-import morph.api.MorphBuilder
+import com.ltrojanowski.morph.api.Morph
 import morph.compiler.MorphProcessor.Companion.OPTION_GENERATED
 import java.io.File
 import javax.annotation.processing.*
@@ -14,11 +12,7 @@ import javax.lang.model.SourceVersion
 import javax.lang.model.element.TypeElement
 import javax.lang.model.util.Elements
 import javax.lang.model.util.Types
-import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import me.eugeniomarletti.kotlin.metadata.isPrimary
-import me.eugeniomarletti.kotlin.metadata.visibility
-import kotlin.reflect.KClass
-import kotlin.reflect.jvm.internal.impl.resolve.constants.KClassValue
+import javax.lang.model.type.TypeMirror
 
 
 @SupportedOptions(OPTION_GENERATED)
@@ -85,73 +79,34 @@ class MorphProcessor : AbstractProcessor() {
 
     override fun process(set: MutableSet<out TypeElement>, roundEnv: RoundEnvironment): Boolean {
 
-        val maybeContext = roundEnv.getElementsAnnotatedWith(Morph::class.java)
+        val validatedContexts = roundEnv.getElementsAnnotatedWith(Morph::class.java)
             .map { it as TypeElement }
             .map { MorphTargetsAndSources(
                 it,
-                it.getAnnotation(Morph::class.java).from.map { it as TypeElement }
+                it.annotationMirrorByType(Morph::class.java)
+                        ?.annotationClassValuesByKey("from")
+                        ?.map { it.value as TypeMirror }
+                        ?.map { it.asTypeElement(processingEnv) } ?: emptyList()
             ) }
             .map { it.validate() }
-
-        val messageList = maybeContext
-                .filter { it.isLeft() }
-                .flatMap { it.swap().orNull()!! }
-        if (messageList.isNotEmpty()) {
-            messageList.forEach {
-                messager.printMessage(
-                        it.kind,
-                        it.msg,
-                        it.element
-                )
+            .fold(Valid(listOf<ValidatedContext>()) as Validated<ValidationMessage, List<ValidatedContext>>) {
+                acu, validatedContext -> acu.combine(validatedContext) {acc, con -> acc + con}
             }
-        } else {
-            maybeContext
-                    .filter { it.isRight() }
-                    .map { it.orNull()!! }
-                    .forEach { it.generateMorphExtensions() }
+
+        when (validatedContexts) {
+           is Valid -> validatedContexts.value.forEach {
+               it.generateMorphExtensions().writeTo(outputDir)
+           }
+           is Invalid -> validatedContexts.value.forEach {
+               messager.printMessage(
+                       it.kind,
+                       it.msg,
+                       it.element
+               )
+           }
         }
 
         return true
-    }
-
-
-    private fun codeGenerator(context: ValidatedContext, pack: String) {
-
-        val file = FileSpec.builder(pack, "${context.target.element.asClassName().simpleName}MorphExtensions")
-        val targetClassTypeParmeter = context.target.element.asType()
-
-        context.sources.forEach { source ->
-            val extFunction = generateExtensionFunctionFor(context.target, source)
-        }
-    }
-
-    private fun generateBuilder(target: KotlinClassElement) {
-        val targetConstructor = target.classData.constructorList.find { it.isPrimary }
-        val paramaterList = targetConstructor!!.valueParameterList
-        val typeParams = target.classData.typeParameterList.map { it.asTypeName(nameResolver)}
-        val parameterSpecList = paramaterList.map {
-            ParameterSpec.builder("foo", typeParams[it.name].asTypeName, KModifier.PUBLIC)
-        }
-//        val targetProperties = target.classData.constructorList.find { it.isPrimary }.propertyList
-//                .filter { it.visibility !in MorphProcessor.ALLOWABLE_PROPERTY_VISIBILITY}
-//                .map {
-//                    Pair(target.classData.getTypeParameter(it.name), target.nameResolver.getString(it.name))
-//                }.toSet()
-        val builderConstructor = FunSpec.constructorBuilder()
-                .addParameter(ParameterSpec.builder())
-        TypeSpec
-                .classBuilder(target.element.asClassName())
-                .addSuperinterface(MorphBuilder::class.parameterizedBy(target.element::class))
-                .primaryConstructor()
-                .addFunction(
-                        FunSpec.builder("morph")
-                                .addModifiers(KModifier.OVERRIDE)
-                                .addStatement("")
-                )
-    }
-
-    private fun generateExtensionFunctionFor(target: KotlinClassElement, source: KotlinClassElement) {
-        FunSpec.builder("morph")
     }
 
 }

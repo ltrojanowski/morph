@@ -5,8 +5,7 @@ subprojects { project ->
 }
 
 buildscript {
-    ext.kotlin_version = '1.3.11'
-    ext.arrow_version = '0.8.0'
+    ext.kotlin_version = '1.3.21'
 
     repositories {
         mavenCentral()
@@ -48,19 +47,13 @@ compileTestKotlin {
 ext {
     libraries = [
             kotlinMetadata: "me.eugeniomarletti.kotlin.metadata:kotlin-metadata:1.4.0",
-            kotlinpoet: 'com.squareup:kotlinpoet:1.0.0-RC2',
+            kotlinpoet: 'com.squareup:kotlinpoet:1.0.1',
             autoservice: 'com.google.auto.service:auto-service:1.0-rc4',
             junit: 'org.junit.jupiter:junit-jupiter-api:5.1.1',
             junitEngine: 'org.junit.jupiter:junit-jupiter-engine:5.1.1',
             kotlin: "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version",
             kotlin_junit: "org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version",
-            arrowCore: "io.arrow-kt:arrow-core:$arrow_version",
-            arrowSyntax: "io.arrow-kt:arrow-syntax:$arrow_version",
-            arrowTypeClasses: "io.arrow-kt:arrow-typeclasses:$arrow_version",
-            arrowData: "io.arrow-kt:arrow-data:$arrow_version",
-            arrowInstancesCore: "io.arrow-kt:arrow-instances-core:$arrow_version",
-            arrowInstancesData: "io.arrow-kt:arrow-instances-data:$arrow_version",
-            arrowProcessor: "io.arrow-kt:arrow-annotations-processor:$arrow_version"
-
+            kotlin_test: 'io.kotlintest:kotlintest-runner-junit5:3.1.11',
+            compile_testing: 'com.google.testing.compile:compile-testing:0.15'
     ]
 }

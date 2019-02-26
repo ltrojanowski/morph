@@ -10,6 +10,7 @@
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/morph-api" />
             <option value="$PROJECT_DIR$/morph-compiler" />
+            <option value="$PROJECT_DIR$/morph-integration-tests" />
             <option value="$PROJECT_DIR$/morph-tests" />
           </set>
         </option>

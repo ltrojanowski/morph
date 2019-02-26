@@ -1,110 +1,151 @@
 package morph.compiler
 
-import arrow.core.*
-import me.eugeniomarletti.kotlin.metadata.KotlinClassMetadata
-import me.eugeniomarletti.kotlin.metadata.isPrimary
-import me.eugeniomarletti.kotlin.metadata.kotlinMetadata
+import com.squareup.kotlinpoet.TypeName
+import me.eugeniomarletti.kotlin.metadata.*
 import me.eugeniomarletti.kotlin.metadata.shadow.metadata.ProtoBuf
 import me.eugeniomarletti.kotlin.metadata.shadow.metadata.deserialization.NameResolver
-import me.eugeniomarletti.kotlin.metadata.visibility
-import java.util.*
 import javax.lang.model.element.Element
 import javax.lang.model.element.TypeElement
 import javax.tools.Diagnostic
 import javax.tools.Diagnostic.Kind.*
 
 sealed class ValidationMessage(val kind: Diagnostic.Kind, val msg: String, val element: Element) {
-    data class TargetNotKotlinClass(val target: Element) : ValidationMessage(
-            ERROR, "@Morph can't be applied to $target: must be a Kotlin class", target)
+    data class NotKotlinClass(val target: Element) : ValidationMessage(
+        ERROR, "@Morph can't be applied to $target: is not a kotlin class", target)
+    data class SourceNotKotlinClass(val target: Element, val source: Element): ValidationMessage(
+        ERROR, "@Morph applied to $target has invalid members of parameter 'from': $source is not a kotlin class", target)
     data class TargetHasNoSources(val target: Element) : ValidationMessage(
-            ERROR, "@Morph applied to $target has empty parameter 'from'", target)
-    data class SourcesNotKotlinClasses(val target: Element) : ValidationMessage(
-            ERROR, "@Morph can't be applied to $target: not all sources are Kotlin classes", target)
-    data class NotDataClass(val target: Element) : ValidationMessage(
-            ERROR, "@Morph can't be applied to $target: must be a data class", target)
-//    data class NoPrimaryConstructor(val target: Element) : ValidationMessage(
-//            ERROR, "@Morph can't be applied to $target: a target or sources lack a primary constructor", target)
+        ERROR, "@Morph applied to $target: has empty parameter 'from'", target)
+    data class NoOverlappingFields(val target: Element, val source: Element) : ValidationMessage(
+        ERROR, "@Morph applied to $target has invalid parameter 'from': no fields overlap by name and type for $source", target)
     data class MissingPrimaryConstructor(val target: Element) : ValidationMessage(
         ERROR, "@Morph can't be applied to $target: must have a primary constructor", target)
     data class MultipleIdenticalSources(val target: Element) : ValidationMessage(
-            ERROR, "@Morph applied to $target has invalid parameter 'from': sources list contains multiple identical elements", target)
-    data class NoOverlappingFields(val target: Element, val source: List<Element>) : ValidationMessage(
-            ERROR, "@Morph applied to $target has invalid parameter 'from': no fields overlap by name and type for ${source.joinToString()}", target)
+        ERROR, "@Morph applied to $target has invalid parameter 'from': sources list contains multiple identical elements", target)
 }
 
 typealias KotlinProto = ProtoBuf.Class
 data class KotlinClassElement(
-        val element: TypeElement, val classData: KotlinProto, val nameResolver: NameResolver
+    val element: TypeElement,
+    val classData: KotlinProto,
+    val nameResolver: NameResolver
 )
-data class ValidatedContext(val target: KotlinClassElement, val sources: List<KotlinClassElement>)
+data class KotlinTargetsAndSources(val target: KotlinClassElement, val sources: List<KotlinClassElement>)
+data class ComputationContext(
+        val element: TypeElement,
+        val classData: KotlinProto,
+        val nameResolver: NameResolver,
+        val typeNames: Map<String, TypeName>)
+data class ValidatedContext(val target: ComputationContext, val sources: List<ComputationContext>)
 
 
-private fun TypeElement.isKotlinClass(): Option<KotlinClassElement> {
+private fun TypeElement.validateTargetIsKotlinClass(): Validated<ValidationMessage, KotlinClassElement> {
     val typeMetadata = this.kotlinMetadata
     return if (typeMetadata !is KotlinClassMetadata) {
-        Option.empty()//.left(ValidationMessage.TargetNotKotlinClass(this))
+        Invalid(listOf(ValidationMessage.NotKotlinClass(this)))
     } else {
-        Option.just(KotlinClassElement(this, typeMetadata.data.classProto, typeMetadata.data.nameResolver))
+        Valid(KotlinClassElement(this, typeMetadata.data.classProto, typeMetadata.data.nameResolver))
     }
 }
 
-fun KotlinClassElement.hasOverlappingFields(source: KotlinClassElement): Boolean {
-    val targetProperties = this.classData.propertyList
-            .filter { it.visibility !in MorphProcessor.ALLOWABLE_PROPERTY_VISIBILITY}
-            .map {
-                Pair(this.classData.getTypeParameter(it.name), this.nameResolver.getString(it.name))
-            }.toSet()
-    val sourceProperties = source.classData.propertyList.map {
-        Pair(source.classData.getTypeParameter(it.name), source.nameResolver.getString(it.name))
-    }.toSet()
-
-    return targetProperties.union(sourceProperties).isNotEmpty()
+private fun List<TypeElement>.validateSourcesAreNotEmpty(target: TypeElement): Validated<ValidationMessage, Unit> {
+    return if (this.isEmpty()) {
+        Invalid<ValidationMessage>(listOf(ValidationMessage.TargetHasNoSources(target)))
+    } else {
+        Valid(Unit)
+    }
 }
 
-fun MorphTargetsAndSources.validate(): Either<List<ValidationMessage>, ValidatedContext> {
-    val validationMessage = LinkedList<ValidationMessage>()
+private fun TypeElement.validateSourceIsKotlinClass(target: TypeElement): Validated<ValidationMessage, KotlinClassElement> {
+    val typeMetadata = this.kotlinMetadata
+    return if (typeMetadata !is KotlinClassMetadata) {
+        Invalid(listOf(ValidationMessage.SourceNotKotlinClass(target, this)))
+    } else {
+        Valid(KotlinClassElement(this, typeMetadata.data.classProto, typeMetadata.data.nameResolver))
+    }
+}
+
+private fun KotlinClassElement.validatePrimaryConstructor(): Validated<ValidationMessage, ProtoBuf.Constructor> {
+    val targetConstructor = this.classData.constructorList.find { it.isPrimary }
+    return if (targetConstructor == null) {
+        Invalid(listOf(ValidationMessage.MissingPrimaryConstructor(this.element)))
+    } else {
+        Valid(targetConstructor)
+    }
+}
+
+fun KotlinClassElement.validateHasOverlappingFields(
+        source: KotlinClassElement,
+        targetProperties: Map<String, TypeName>
+): Validated<ValidationMessage, Map<String, TypeName>> {
+    val sourceProperties = source.classData.propertyList
+            .filter { property -> property.setterVisibility in MorphProcessor.ALLOWABLE_PROPERTY_VISIBILITY }
+            .associateBy({ source.nameResolver.getString(it.name) },
+                    { it.returnType.asTypeName(source.nameResolver, source.classData::getTypeParameter, true) })
+    return if (targetProperties
+                    .map { (k, v) -> k to v.copy(nullable = false) }
+                    .toList().toSet()
+                    .intersect(sourceProperties.map { (k, v) -> k to v.copy(nullable = false) }
+                            .toList().toSet()).isNotEmpty()) {
+        Valid(sourceProperties)
+    } else {
+        Invalid(listOf(ValidationMessage.NoOverlappingFields(this.element, source.element)))
+    }
+}
+
+fun MorphTargetsAndSources.validate(): Validated<ValidationMessage, ValidatedContext> {
+
     // check if target is kotlin class
-    val maybeKotlinClassElementTarget = target.isKotlinClass()
-    if (maybeKotlinClassElementTarget.isEmpty()) {
-        validationMessage.add(ValidationMessage.TargetNotKotlinClass(target))
-    }
-    // check if sources is empty list
-    if (sources.isEmpty()) {
-        validationMessage.add(ValidationMessage.TargetHasNoSources(target))
-    }
-    // check if sources is kotlin class
-    val maybeSources = sources.map { it.isKotlinClass() }
-    if (maybeSources.find { it.isEmpty() } == null) {
-        validationMessage.add(ValidationMessage.SourcesNotKotlinClasses(target))
-    }
-    return if (validationMessage.isEmpty()) {
-        // valid so far
-        val preValidatedContext = ValidatedContext(
-                maybeKotlinClassElementTarget.orNull()!!, maybeSources.map { it.orNull()!! }
-        )
-        // check if target and sources are data classes ??? not sure if necessary ???
+    val validatedIsKotlinClass = target.validateTargetIsKotlinClass()
 
-        // check if target has primary constructor
-        val targetConstructor = preValidatedContext.target.classData.constructorList.find { it.isPrimary }
-        if (targetConstructor == null) {
-            validationMessage.add(ValidationMessage.MissingPrimaryConstructor(preValidatedContext.target.element))
-        }
-        // check if source and targets have overlapping fields
-        val notOverlapping = preValidatedContext.sources.map { !preValidatedContext.target.hasOverlappingFields(it) }
-        if (notOverlapping.isNotEmpty()) {
-            validationMessage.add(
-                    ValidationMessage.NoOverlappingFields(
-                            preValidatedContext.target.element,
-                            preValidatedContext.sources.map { it.element }
-                    )
-            )
-        }
-        if (validationMessage.isEmpty()) {
-            Either.right(preValidatedContext)
-        } else {
-            Either.left(validationMessage)
-        }
-    } else {
-        Either.left(validationMessage)
-    }
+    // check if sources is empty list
+    val validatedSourcesAreNonEmptyList = sources.validateSourcesAreNotEmpty(target)
+
+    // check if sources are all kotlin classes
+    val validatedSources = sources
+            .map { it.validateSourceIsKotlinClass(target) }
+            .fold( Valid(listOf<KotlinClassElement>()) as Validated<ValidationMessage, List<KotlinClassElement>> ) {
+                acu, sourceValidation -> acu.combine(sourceValidation) {acc, elem -> acc + elem}
+            }
+
+    return validatedIsKotlinClass
+            .combine(validatedSourcesAreNonEmptyList, ::keepLeft)
+            .combine(validatedSources) { validatedTarget, validatedSources ->
+                KotlinTargetsAndSources(validatedTarget, validatedSources)
+            }.combineRight { targetsAndSources ->
+                // check if target has primary constructor
+                targetsAndSources.target.validatePrimaryConstructor()
+                        .combineRight {
+                            // check if source and targets have overlapping fields
+                            val targetProperties = targetsAndSources.target.classData.propertyList
+                                    .filter { property -> property.getterVisibility in MorphProcessor.ALLOWABLE_PROPERTY_VISIBILITY }
+                                    .associateBy(
+                                            { targetsAndSources.target.nameResolver.getString(it.name) },
+                                            { it.returnType.asTypeName(targetsAndSources.target.nameResolver, targetsAndSources.target.classData::getTypeParameter, true) })
+                            val validatedOverlappingFields = targetsAndSources.sources
+                                    .map { targetsAndSources.target.validateHasOverlappingFields(it, targetProperties) }
+                                    .fold(Valid(listOf<Map<String, TypeName>>()) as Validated<ValidationMessage, List<Map<String, TypeName>>>) {
+                                        acu, validated -> acu.combine(validated) { acc, elem -> acc + elem }
+                                    }
+                            (Valid(Unit) as Validated<ValidationMessage, Unit>)
+                                    .combine(validatedOverlappingFields) { _, sourcePropertiesList ->
+                                ValidatedContext(
+                                        ComputationContext(
+                                                targetsAndSources.target.element,
+                                                targetsAndSources.target.classData,
+                                                targetsAndSources.target.nameResolver,
+                                                targetProperties
+                                        ),
+                                        sourcePropertiesList.zip(targetsAndSources.sources) {
+                                            sourceProperties, sourceKotlinElement -> ComputationContext(
+                                                sourceKotlinElement.element,
+                                                sourceKotlinElement.classData,
+                                                sourceKotlinElement.nameResolver,
+                                                sourceProperties
+                                        )
+                                        }
+                                )
+                            }
+                        }
+            }
 }

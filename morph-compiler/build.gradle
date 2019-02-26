@@ -10,6 +10,10 @@ repositories {
     mavenCentral()
 }
 
+test {
+    useJUnitPlatform()
+}
+
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
     implementation project(':morph-api')
@@ -17,13 +21,6 @@ dependencies {
     kapt libraries.autoservice
     implementation libraries.kotlinpoet
     implementation libraries.kotlinMetadata
-    implementation libraries.arrowCore
-//    implementation libraries.arrowSyntax
-//    implementation libraries.arrowTypeClasses
-//    implementation libraries.arrowData
-//    implementation libraries.arrowInstancesCore
-//    implementation libraries.arrowInstancesData
-    kapt libraries.arrowProcessor
     testImplementation libraries.junit
     testImplementation libraries.kotlin_junit
 }
