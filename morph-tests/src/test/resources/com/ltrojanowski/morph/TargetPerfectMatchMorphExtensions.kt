@@ -14,13 +14,13 @@ class TargetPerfectMatchMorphBuilder(
     var c: Double?,
     var d: Boolean?
 ) : MorphBuilder<TargetPerfectMatch> {
-    override fun morph(): TargetPerfectMatch = TargetPerfectMatch(a!!, b, c!!, d!!)
+    override fun morph(): TargetPerfectMatch = TargetPerfectMatch(a = a!!, b = b, c = c!!, d = d!!)
 }
 
-fun <TargetPerfectMatch> SourcePerfectMatchA.into(block: TargetPerfectMatchMorphBuilder.() -> Unit):
-        TargetPerfectMatchMorphBuilder = TargetPerfectMatchMorphBuilder(this.a, this.b, this.c,
-        this.d)
+inline fun <TargetPerfectMatch> SourcePerfectMatchA.into(block: TargetPerfectMatchMorphBuilder.() ->
+        Unit): TargetPerfectMatchMorphBuilder = TargetPerfectMatchMorphBuilder(this.a, this.b,
+        this.c, this.d).apply(block)
 
-fun <TargetPerfectMatch> SourcePerfectMatchB.into(block: TargetPerfectMatchMorphBuilder.() -> Unit):
-        TargetPerfectMatchMorphBuilder = TargetPerfectMatchMorphBuilder(this.a, this.b, this.c,
-        this.d)
+inline fun <TargetPerfectMatch> SourcePerfectMatchB.into(block: TargetPerfectMatchMorphBuilder.() ->
+        Unit): TargetPerfectMatchMorphBuilder = TargetPerfectMatchMorphBuilder(this.a, this.b,
+        this.c, this.d).apply(block)

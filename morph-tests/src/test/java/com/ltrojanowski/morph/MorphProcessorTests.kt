@@ -53,6 +53,13 @@ class MorphProcessorTests : APTest("com.ltrojanowski.morph") {
                 processor = MorphProcessor()
         ))
 
+        testProcessor(AnnotationProcessor(
+                name = "Target must have overlapping fields with source - no matching nullability",
+                sourceFiles = listOf("TargetHasNoOverlappingNullability.java"),
+                errorMessage = "@Morph applied to com.ltrojanowski.morph.TargetHasNoOverlappingNullability has invalid parameter 'from': no fields overlap by name and type for com.ltrojanowski.morph.SourceForTargetWithNoOverlappingNullability",
+                processor = MorphProcessor()
+        ))
+
         /*
         * Code generation test
         * */

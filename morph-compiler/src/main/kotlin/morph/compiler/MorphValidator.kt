@@ -82,11 +82,7 @@ fun KotlinClassElement.validateHasOverlappingFields(
             .filter { property -> property.setterVisibility in MorphProcessor.ALLOWABLE_PROPERTY_VISIBILITY }
             .associateBy({ source.nameResolver.getString(it.name) },
                     { it.returnType.asTypeName(source.nameResolver, source.classData::getTypeParameter, true) })
-    return if (targetProperties
-                    .map { (k, v) -> k to v.copy(nullable = false) }
-                    .toList().toSet()
-                    .intersect(sourceProperties.map { (k, v) -> k to v.copy(nullable = false) }
-                            .toList().toSet()).isNotEmpty()) {
+    return if (targetProperties.toList().toSet().intersect(sourceProperties.toList().toSet()).isNotEmpty()) {
         Valid(sourceProperties)
     } else {
         Invalid(listOf(ValidationMessage.NoOverlappingFields(this.element, source.element)))

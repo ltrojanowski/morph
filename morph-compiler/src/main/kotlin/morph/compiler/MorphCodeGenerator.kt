@@ -52,7 +52,7 @@ fun ValidatedContext.generateMorphExtensions(): FileSpec {
                     FunSpec.builder("morph")
                             .addModifiers(KModifier.OVERRIDE)
                             .addStatement("return %T(${targetTypeNameByName
-                                    .map { (k, v) -> if (v.isNullable) k else "$k!!" }.joinToString()})",
+                                    .map { (k, v) -> if (v.isNullable) "$k = $k" else "$k = $k!!" }.joinToString()})",
                                     targetKClass)
                             .returns(targetKClass)
                             .build()
@@ -65,10 +65,15 @@ fun ValidatedContext.generateMorphExtensions(): FileSpec {
 
         val sourceKClass = source.element.asType().asTypeName()
 
+        val jvmNameAnnotation =
+                AnnotationSpec.builder(JvmName::class)
+                        .addMember("name = %S", "into${target.element.simpleName}From${source.element.simpleName}")
+                        .build()
+
         FunSpec.builder("into")
                 .addModifiers(KModifier.INLINE)
                 .receiver(sourceKClass)
-                .addTypeVariable(TypeVariableName(target.element.simpleName.toString()).copy(reified = true))
+                .addTypeVariable(TypeVariableName(target.element.simpleName.toString()))
                 .addParameter(
                         "block",
                         LambdaTypeName.get(receiver = ClassName.bestGuess(targetBuilderClass.name!!),

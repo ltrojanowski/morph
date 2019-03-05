@@ -7,4 +7,4 @@ data class TargetPerfectMatch(val a: Int, val b: String?, val c: Double, val d: 
 
 data class SourcePerfectMatchA(val a: Int, val b: String, val c: Double, val d: Boolean)
 
-data class SourcePerfectMatchB(val a: Int, val b: String, val c: Double, val d: Boolean)
+data class SourcePerfectMatchB(val a: Int, val b: String, val c: Double?, val d: Boolean)
